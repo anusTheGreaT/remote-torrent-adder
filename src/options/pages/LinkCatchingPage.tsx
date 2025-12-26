@@ -1,4 +1,4 @@
-import { useState, ChangeEvent } from "react";
+import { useState, ChangeEvent, useEffect } from "react";
 import Toggle from "../components/Toggle";
 import { useSettings } from "../SettingsContext";
 
@@ -20,6 +20,24 @@ export default function LinkCatchingPage(): JSX.Element {
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const [editValue, setEditValue] = useState<string>("");
   const [testerValue, setTesterValue] = useState<string>("");
+
+  // Passkey state & sync with settings/localStorage
+  const [passkey, setPasskey] = useState<string>("");
+
+  useEffect(() => {
+    if (!loading && settings) {
+      // Prefer settings.yggPasskey, fallback to localStorage
+      const fromSettings = (settings as any).yggPasskey;
+      const fromStorage = (() => {
+        try {
+          return localStorage.getItem("rta_passkey") || "";
+        } catch {
+          return "";
+        }
+      })();
+      setPasskey(fromSettings ?? fromStorage ?? "");
+    }
+  }, [loading, settings]);
 
   if (loading || !settings) return <div>Loading...</div>;
 
@@ -57,6 +75,48 @@ export default function LinkCatchingPage(): JSX.Element {
 
   const handleTesterChange = (e: ChangeEvent<HTMLInputElement>): void => {
     setTesterValue(e.target.value);
+  };
+
+  // Passkey handlers: persist in settings (if supported) and localStorage,
+  // and notify content scripts/background via custom event.
+  const savePasskey = (): void => {
+    try {
+      updateSetting("yggPasskey", passkey);
+    } catch (e) {
+      // updateSetting might still accept arbitrary keys; if not, localStorage fallback below will work.
+      console.warn("updateSetting('yggPasskey', ...) failed:", e);
+    }
+    try {
+      localStorage.setItem("rta_passkey", passkey || "");
+    } catch (e) {
+      console.warn("localStorage set failed:", e);
+    }
+    try {
+      window.dispatchEvent(new CustomEvent("rta-passkey-changed", { detail: { passkey } }));
+    } catch (e) {
+      // ignore
+    }
+    alert("Passkey sauvegardée.");
+  };
+
+  const clearPasskey = (): void => {
+    try {
+      updateSetting("yggPasskey", "");
+    } catch (e) {
+      console.warn("updateSetting('yggPasskey', '') failed:", e);
+    }
+    try {
+      localStorage.removeItem("rta_passkey");
+    } catch (e) {
+      console.warn("localStorage remove failed:", e);
+    }
+    try {
+      window.dispatchEvent(new CustomEvent("rta-passkey-changed", { detail: { passkey: "" } }));
+    } catch (e) {
+      // ignore
+    }
+    setPasskey("");
+    alert("Passkey effacée.");
   };
 
   return (
@@ -148,7 +208,9 @@ export default function LinkCatchingPage(): JSX.Element {
           >Add</button>
         </div>
       </div>
+
       <hr style={{ margin: "32px 0 24px 0", border: "none", borderTop: "1px solid var(--rta-border, #b7c9a7)" }} />
+
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>Test your regexes:</label>
         <input
@@ -185,6 +247,52 @@ export default function LinkCatchingPage(): JSX.Element {
               })()}
             </ul>
           )}
+        </div>
+      </div>
+
+      <hr style={{ margin: "32px 0 24px 0", border: "none", borderTop: "1px solid var(--rta-border, #b7c9a7)" }} />
+
+      {/* YggTorrent passkey settings (integrated) */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ fontWeight: 700, display: "block", marginBottom: 8 }}>YggTorrent passkey</label>
+        <p style={{ marginTop: 0, marginBottom: 8, color: "var(--rta-muted, #5b6b5a)" }}>
+          Entrez votre passkey (utilisé pour générer les magnets sur yggtorrent). La valeur est sauvegardée dans les settings (si pris en charge) et en localStorage sous la clé <code>rta_passkey</code>.
+        </p>
+        <input
+          type="text"
+          value={passkey}
+          onChange={(e) => setPasskey(e.target.value)}
+          placeholder="Votre passkey"
+          style={{ width: "100%", maxWidth: 480, padding: "6px 10px", borderRadius: 8, border: "1px solid var(--rta-border, #b7c9a7)", marginBottom: 8 }}
+        />
+        <div>
+          <button
+            onClick={savePasskey}
+            style={{
+              background: "var(--rta-accent, #b7c9a7)",
+              color: "var(--rta-green-dark, #4e6a57)",
+              border: "none",
+              borderRadius: 8,
+              padding: "6px 12px",
+              fontWeight: 500,
+              cursor: "pointer",
+              marginRight: 8
+            }}
+          >
+            Sauvegarder le passkey
+          </button>
+          <button
+            onClick={clearPasskey}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--rta-border, #b7c9a7)",
+              borderRadius: 8,
+              padding: "6px 12px",
+              cursor: "pointer"
+            }}
+          >
+            Effacer
+          </button>
         </div>
       </div>
     </div>
