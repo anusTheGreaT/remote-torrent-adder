@@ -10,4 +10,5 @@ export interface RTASettings {
     linkCatchingRegexes: RegExp[];
 
     webuiSettings: WebUISettings[];
+    yggPasskey: string;
 }
